@@ -9,6 +9,7 @@ import android.app.Activity
 import android.content.res.AssetManager.ACCESS_BUFFER
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import app.tauri.Logger
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -44,10 +45,16 @@ class FsPlugin(private val activity: Activity): Plugin(activity) {
 
         if (args.uri.startsWith(app.tauri.TAURI_ASSETS_DIRECTORY_URI)) {
             val path = args.uri.substring(app.tauri.TAURI_ASSETS_DIRECTORY_URI.length)
+            Logger.info("FsPlugin: opening asset file descriptor for path: $path")
             try {
-                val fd = activity.assets.openFd(path).parcelFileDescriptor?.detachFd()
+                Logger.info("FsPlugin: trying to open asset file descriptor directly")
+                val assetFd = activity.assets.openFd(path)
+                val fd = assetFd.parcelFileDescriptor?.detachFd()
                 res.put("fd", fd)
+                res.put("offset", assetFd.startOffset)
+                res.put("length", assetFd.length)
             } catch (e: IOException) {
+                Logger.info("FsPlugin: asset file descriptor open failed, copying to cache: ${e.message}")
                 // if the asset is compressed, we cannot open a file descriptor directly
                 // so we copy it to the cache and get a fd from there
                 // this is a lot faster than serializing the file and sending it as invoke response

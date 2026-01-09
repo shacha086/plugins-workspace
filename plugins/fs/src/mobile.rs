@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+use std::fs::File;
 use serde::de::DeserializeOwned;
 use tauri::{
     plugin::{PluginApi, PluginHandle},
     AppHandle, Runtime,
 };
 
-use crate::{models::*, FilePath, OpenOptions};
+use crate::{models::*, FilePath, OpenOptions, file_segment::{FileSegment, FileOrSegment}};
 
 #[cfg(target_os = "android")]
 const PLUGIN_IDENTIFIER: &str = "com.plugin.fs";
@@ -39,6 +40,17 @@ impl<R: Runtime> Fs<R> {
         path: P,
         opts: OpenOptions,
     ) -> std::io::Result<std::fs::File> {
+        match self.open_segment(path, opts)? {
+            FileOrSegment::File(f) => Ok(f),
+            FileOrSegment::Segment(fs) => Ok(fs.file),
+        }
+    }
+
+    pub fn open_segment<P: Into<FilePath>>(
+        &self,
+        path: P,
+        opts: OpenOptions,
+    ) -> std::io::Result<FileOrSegment> {
         match path.into() {
             FilePath::Url(u) => self
                 .resolve_content_uri(u.to_string(), opts.android_mode())
@@ -51,9 +63,11 @@ impl<R: Runtime> Fs<R> {
             FilePath::Path(p) => {
                 // tauri::utils::platform::resources_dir() returns a PathBuf with the Android asset URI prefix
                 // we must resolve that file with the Android API
+                println!("Opening path: {:?}", p);
                 if p.strip_prefix(tauri::utils::platform::ANDROID_ASSET_PROTOCOL_URI_PREFIX)
                     .is_ok()
                 {
+                    println!("Resolving content URI: {:?}", p);
                     self.resolve_content_uri(p.to_string_lossy(), opts.android_mode())
                         .map_err(|e| {
                             std::io::Error::new(
@@ -62,19 +76,21 @@ impl<R: Runtime> Fs<R> {
                             )
                         })
                 } else {
-                    std::fs::OpenOptions::from(opts).open(p)
+                    println!("Opening regular file: {:?}", p);
+                    let file = std::fs::OpenOptions::from(opts).open(p)?;
+                    Ok(FileOrSegment::File(file))
                 }
             }
         }
     }
 
-    #[cfg(target_os = "android")]
+    // #[cfg(target_os = "android")]
     fn resolve_content_uri(
         &self,
         uri: impl Into<String>,
         mode: impl Into<String>,
-    ) -> crate::Result<std::fs::File> {
-        #[cfg(target_os = "android")]
+    ) -> crate::Result<FileOrSegment> {
+        // #[cfg(target_os = "android")]
         {
             let result = self.0.run_mobile_plugin::<GetFileDescriptorResponse>(
                 "getFileDescriptor",
@@ -84,9 +100,19 @@ impl<R: Runtime> Fs<R> {
                 },
             )?;
             if let Some(fd) = result.fd {
+                if let Some(offset) = result.offset {
+                    if let Some(length) = result.length {
+                        // SAFETY: from_raw_fd takes ownership of the fd
+                        let mut file: File = unsafe {
+                            use std::os::fd::FromRawFd; 
+                            std::fs::File::from_raw_fd(fd) 
+                        };
+                        return Ok(FileOrSegment::Segment(FileSegment{file, offset, size: length}));
+                    }
+                }
                 Ok(unsafe {
                     use std::os::fd::FromRawFd;
-                    std::fs::File::from_raw_fd(fd)
+                    FileOrSegment::File(std::fs::File::from_raw_fd(fd))
                 })
             } else {
                 unimplemented!()
