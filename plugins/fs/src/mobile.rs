@@ -35,6 +35,7 @@ pub fn init<R: Runtime, C: DeserializeOwned>(
 pub struct Fs<R: Runtime>(PluginHandle<R>);
 
 impl<R: Runtime> Fs<R> {
+    // need deprecated
     pub fn open<P: Into<FilePath>>(
         &self,
         path: P,
@@ -100,19 +101,19 @@ impl<R: Runtime> Fs<R> {
                 },
             )?;
             if let Some(fd) = result.fd {
-                if let Some(offset) = result.offset {
-                    if let Some(length) = result.length {
-                        // SAFETY: from_raw_fd takes ownership of the fd
-                        let mut file: File = unsafe {
-                            use std::os::fd::FromRawFd; 
-                            std::fs::File::from_raw_fd(fd) 
-                        };
-                        return Ok(FileOrSegment::Segment(FileSegment{file, offset, size: length}));
-                    }
-                }
                 Ok(unsafe {
                     use std::os::fd::FromRawFd;
-                    FileOrSegment::File(std::fs::File::from_raw_fd(fd))
+                    let file: File = std::fs::File::from_raw_fd(fd);
+                    match (result.offset, result.size) {
+                        (Some(offset), Some(size)) => {
+                            FileOrSegment::Segment(FileSegment {
+                                file,
+                                offset,
+                                size,
+                            })
+                        }
+                        _ => FileOrSegment::File(file),
+                    }
                 })
             } else {
                 unimplemented!()

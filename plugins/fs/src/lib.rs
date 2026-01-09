@@ -348,15 +348,26 @@ use crate::file_segment::FileOrSegment;
 #[cfg(target_os = "android")]
 impl<R: Runtime> Fs<R> {
     pub fn read_to_string<P: Into<FilePath>>(&self, path: P) -> std::io::Result<String> {
+        use std::io::Seek;
         let mut s = String::new();
-        self.open(
+        let f = self.open_segment(
             path,
             OpenOptions {
                 read: true,
                 ..Default::default()
             },
-        )?
-        .read_to_string(&mut s)?;
+        )?;
+        match f {
+            FileOrSegment::File(mut file) => {
+                file.read_to_string(&mut s)?;
+            },
+            FileOrSegment::Segment(segment) => {
+                let mut handle = segment.file;
+                handle.seek(std::io::SeekFrom::Start(segment.offset))?;
+                let mut limited_reader = handle.take(segment.size);
+                limited_reader.read_to_string(&mut s)?;
+            }
+        }
         Ok(s)
     }
 

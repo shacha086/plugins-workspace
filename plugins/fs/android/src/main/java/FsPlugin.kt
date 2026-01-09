@@ -52,7 +52,7 @@ class FsPlugin(private val activity: Activity): Plugin(activity) {
                 val fd = assetFd.parcelFileDescriptor?.detachFd()
                 res.put("fd", fd)
                 res.put("offset", assetFd.startOffset)
-                res.put("length", assetFd.length)
+                res.put("size", assetFd.length)
             } catch (e: IOException) {
                 Logger.info("FsPlugin: asset file descriptor open failed, copying to cache: ${e.message}")
                 // if the asset is compressed, we cannot open a file descriptor directly

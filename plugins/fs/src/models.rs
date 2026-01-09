@@ -16,5 +16,5 @@ pub struct GetFileDescriptorPayload {
 pub struct GetFileDescriptorResponse {
     pub fd: Option<i32>,
     pub offset: Option<u64>,
-    pub length: Option<u64>,
+    pub size: Option<u64>,
 }
