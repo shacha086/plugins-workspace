@@ -64,11 +64,9 @@ impl<R: Runtime> Fs<R> {
             FilePath::Path(p) => {
                 // tauri::utils::platform::resources_dir() returns a PathBuf with the Android asset URI prefix
                 // we must resolve that file with the Android API
-                println!("Opening path: {:?}", p);
                 if p.strip_prefix(tauri::utils::platform::ANDROID_ASSET_PROTOCOL_URI_PREFIX)
                     .is_ok()
                 {
-                    println!("Resolving content URI: {:?}", p);
                     self.resolve_content_uri(p.to_string_lossy(), opts.android_mode())
                         .map_err(|e| {
                             std::io::Error::new(
@@ -77,7 +75,6 @@ impl<R: Runtime> Fs<R> {
                             )
                         })
                 } else {
-                    println!("Opening regular file: {:?}", p);
                     let file = std::fs::OpenOptions::from(opts).open(p)?;
                     Ok(FileOrSegment::File(file))
                 }
@@ -85,13 +82,13 @@ impl<R: Runtime> Fs<R> {
         }
     }
 
-    // #[cfg(target_os = "android")]
+    #[cfg(target_os = "android")]
     fn resolve_content_uri(
         &self,
         uri: impl Into<String>,
         mode: impl Into<String>,
     ) -> crate::Result<FileOrSegment> {
-        // #[cfg(target_os = "android")]
+        #[cfg(target_os = "android")]
         {
             let result = self.0.run_mobile_plugin::<GetFileDescriptorResponse>(
                 "getFileDescriptor",
